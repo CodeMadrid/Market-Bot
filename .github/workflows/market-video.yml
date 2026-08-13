@@ -1,0 +1,65 @@
+name: Daily Market Video
+
+on:
+  schedule:
+    - cron: "45 10 * * 1-5"
+
+  workflow_dispatch:
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 90
+
+    env:
+      ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
+      ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      VIDEO_LANGUAGE: "both"
+      OUTPUT_FOLDER: "output"
+      VIDEO_FPS: "30"
+      VIDEO_RESOLUTION: "1920x1080"
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+      CANDLE_INTERVAL: "ONE_DAY"
+      RUN_TIME: "16:15"
+
+      YOUTUBE_UPLOAD: "true"
+      YT_PRIVACY: "private"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore YouTube client secret
+        env:
+          CLIENT_SECRET_JSON_B64: ${{ secrets.CLIENT_SECRET_JSON_B64 }}
+        run: |
+          echo "$CLIENT_SECRET_JSON_B64" | base64 --decode > client_secret.json
+
+      - name: Restore YouTube token
+        env:
+          YOUTUBE_TOKEN_PICKLE_B64: ${{ secrets.YOUTUBE_TOKEN_PICKLE_B64 }}
+        run: |
+          echo "$YOUTUBE_TOKEN_PICKLE_B64" | base64 --decode > youtube_token.pickle
+
+      - name: Run market video pipeline
+        run: |
+          python main.py --demo
