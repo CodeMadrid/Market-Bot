@@ -27,3 +27,9 @@ python-dotenv==1.0.1
 schedule==1.2.2
 loguru==0.7.2
 rich==13.7.1
+
+
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
