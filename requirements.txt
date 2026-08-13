@@ -1,0 +1,29 @@
+# ─── Indian Broker API ───────────────────────────────────────
+smartapi-python==1.3.8        # Angel One SmartAPI (FREE, NSE/BSE/MCX)
+pyotp==2.9.0                  # OTP for Angel One TOTP login
+websocket-client==1.8.0       # Live feed
+
+# ─── Data Processing ─────────────────────────────────────────
+pandas==2.2.2
+numpy==1.26.4
+requests==2.31.0
+
+# ─── Chart Generation ────────────────────────────────────────
+matplotlib==3.8.4
+mplfinance==0.12.10b0
+Pillow==10.3.0
+
+# ─── TTS — Hindi + English ───────────────────────────────────
+gtts==2.5.1
+pydub==0.25.1
+
+# ─── Video Composition ───────────────────────────────────────
+moviepy==1.0.3
+imageio==2.34.1
+imageio-ffmpeg==0.4.9
+
+# ─── Utilities ───────────────────────────────────────────────
+python-dotenv==1.0.1
+schedule==1.2.2
+loguru==0.7.2
+rich==13.7.1
