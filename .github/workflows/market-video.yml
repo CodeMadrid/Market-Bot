@@ -13,53 +13,158 @@ jobs:
     timeout-minutes: 90
 
     env:
+      # =========================
+      # Angel One credentials
+      # =========================
+      ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+      ANGEL_CLIENT_ID: ${{ secrets.ANGEL_CLIENT_ID }}
       ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
       ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
+      # =========================
+      # OpenRouter
+      # =========================
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+
+      # =========================
+      # Video settings
+      # =========================
       VIDEO_LANGUAGE: "both"
       OUTPUT_FOLDER: "output"
       VIDEO_FPS: "30"
       VIDEO_RESOLUTION: "1920x1080"
-      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+
+      # =========================
+      # Market settings
+      # =========================
       CANDLE_INTERVAL: "ONE_DAY"
       RUN_TIME: "16:15"
 
+      # =========================
+      # YouTube
+      # =========================
       YOUTUBE_UPLOAD: "true"
       YT_PRIVACY: "public"
 
     steps:
+      # =========================
+      # 1. Checkout repository
+      # =========================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # =========================
+      # 2. Setup Python
+      # =========================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
+      # =========================
+      # 3. Install FFmpeg
+      # =========================
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+      # =========================
+      # 4. Install Python dependencies
+      # =========================
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # =========================
+      # 5. Verify environment
+      # =========================
+      - name: Verify environment
+        run: |
+          python - <<'PY'
+          import os
+
+          required = [
+              "ANGEL_API_KEY",
+              "ANGEL_CLIENT_ID",
+              "ANGEL_PASSWORD",
+              "ANGEL_TOTP_SECRET",
+              "OPENROUTER_API_KEY",
+              "OPENROUTER_MODEL",
+          ]
+
+          missing = []
+
+          for name in required:
+              value = os.getenv(name)
+
+              if value:
+                  print(f"{name}: SET")
+              else:
+                  print(f"{name}: MISSING")
+                  missing.append(name)
+
+          if missing:
+              print()
+              print("ERROR: Missing required environment variables:")
+
+              for name in missing:
+                  print(f"  - {name}")
+
+              raise SystemExit(1)
+
+          print()
+          print("All required environment variables are available.")
+          PY
+
+      # =========================
+      # 6. Restore YouTube client secret
+      # =========================
       - name: Restore YouTube client secret
         env:
           CLIENT_SECRET_JSON_B64: ${{ secrets.CLIENT_SECRET_JSON_B64 }}
         run: |
+          if [ -z "$CLIENT_SECRET_JSON_B64" ]; then
+            echo "ERROR: CLIENT_SECRET_JSON_B64 is missing"
+            exit 1
+          fi
+
           echo "$CLIENT_SECRET_JSON_B64" | base64 --decode > client_secret.json
 
+          if [ ! -s client_secret.json ]; then
+            echo "ERROR: client_secret.json was not created correctly"
+            exit 1
+          fi
+
+          echo "YouTube client secret restored successfully."
+
+      # =========================
+      # 7. Restore YouTube token
+      # =========================
       - name: Restore YouTube token
         env:
           YOUTUBE_TOKEN_PICKLE_B64: ${{ secrets.YOUTUBE_TOKEN_PICKLE_B64 }}
         run: |
+          if [ -z "$YOUTUBE_TOKEN_PICKLE_B64" ]; then
+            echo "ERROR: YOUTUBE_TOKEN_PICKLE_B64 is missing"
+            exit 1
+          fi
+
           echo "$YOUTUBE_TOKEN_PICKLE_B64" | base64 --decode > youtube_token.pickle
 
+          if [ ! -s youtube_token.pickle ]; then
+            echo "ERROR: youtube_token.pickle was not created correctly"
+            exit 1
+          fi
+
+          echo "YouTube token restored successfully."
+
+      # =========================
+      # 8. Run market video pipeline
+      # =========================
       - name: Run market video pipeline
         run: |
           python main.py
