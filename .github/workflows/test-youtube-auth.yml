@@ -1,0 +1,252 @@
+```yaml
+name: Test YouTube Authentication
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-youtube-auth:
+    runs-on: ubuntu-latest
+
+    steps:
+      # =========================
+      # 1. Checkout repository
+      # =========================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # =========================
+      # 2. Setup Python
+      # =========================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # =========================
+      # 3. Install YouTube dependencies
+      # =========================
+      - name: Install YouTube dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          pip install \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client
+
+      # =========================
+      # 4. Restore YouTube client secret
+      # =========================
+      - name: Restore YouTube client secret
+        env:
+          CLIENT_SECRET_JSON_B64: ${{ secrets.CLIENT_SECRET_JSON_B64 }}
+        run: |
+          set -e
+
+          if [ -z "$CLIENT_SECRET_JSON_B64" ]; then
+            echo "❌ CLIENT_SECRET_JSON_B64 is missing"
+            exit 1
+          fi
+
+          echo "$CLIENT_SECRET_JSON_B64" | base64 --decode > client_secret.json
+
+          if [ ! -s client_secret.json ]; then
+            echo "❌ client_secret.json was not created correctly"
+            exit 1
+          fi
+
+          echo "✅ client_secret.json restored"
+
+      # =========================
+      # 5. Restore YouTube token
+      # =========================
+      - name: Restore YouTube token
+        env:
+          YOUTUBE_TOKEN_PICKLE_B64: ${{ secrets.YOUTUBE_TOKEN_PICKLE_B64 }}
+        run: |
+          set -e
+
+          if [ -z "$YOUTUBE_TOKEN_PICKLE_B64" ]; then
+            echo "❌ YOUTUBE_TOKEN_PICKLE_B64 is missing"
+            exit 1
+          fi
+
+          echo "$YOUTUBE_TOKEN_PICKLE_B64" | base64 --decode > youtube_token.pickle
+
+          if [ ! -s youtube_token.pickle ]; then
+            echo "❌ youtube_token.pickle was not created correctly"
+            exit 1
+          fi
+
+          echo "✅ youtube_token.pickle restored"
+
+      # =========================
+      # 6. Inspect credentials
+      # =========================
+      - name: Inspect YouTube credentials
+        run: |
+          python - <<'PY'
+          import pickle
+          import json
+          import os
+
+          print("=" * 60)
+          print("YOUTUBE CREDENTIAL INSPECTION")
+          print("=" * 60)
+
+          # Check client secret
+          print("\n1. Client secret")
+
+          with open("client_secret.json", "r") as f:
+              data = json.load(f)
+
+          if "installed" in data:
+              client_type = "installed"
+              client_data = data["installed"]
+          elif "web" in data:
+              client_type = "web"
+              client_data = data["web"]
+          else:
+              raise SystemExit(
+                  "❌ client_secret.json does not contain "
+                  "'installed' or 'web' credentials"
+              )
+
+          print(f"   Type: {client_type}")
+          print(f"   Client ID present: {bool(client_data.get('client_id'))}")
+          print(f"   Client secret present: {bool(client_data.get('client_secret'))}")
+          print(f"   Project ID present: {bool(client_data.get('project_id'))}")
+
+          # Check pickle
+          print("\n2. OAuth token")
+
+          with open("youtube_token.pickle", "rb") as f:
+              creds = pickle.load(f)
+
+          print(f"   Credential type: {type(creds).__name__}")
+          print(f"   Valid: {creds.valid}")
+          print(f"   Expired: {creds.expired}")
+          print(f"   Refresh token present: {bool(creds.refresh_token)}")
+          print(f"   Scopes: {creds.scopes}")
+          print(f"   Expiry: {creds.expiry}")
+
+          if not creds.refresh_token:
+              raise SystemExit(
+                  "\n❌ No refresh token found inside youtube_token.pickle"
+              )
+
+          print("\n✅ Credential inspection passed")
+          PY
+
+      # =========================
+      # 7. Test OAuth refresh
+      # =========================
+      - name: Test Google OAuth refresh
+        run: |
+          python - <<'PY'
+          import pickle
+          import sys
+
+          from google.auth.transport.requests import Request
+
+          print("=" * 60)
+          print("GOOGLE OAUTH REFRESH TEST")
+          print("=" * 60)
+
+          with open("youtube_token.pickle", "rb") as f:
+              creds = pickle.load(f)
+
+          print(f"\nBefore refresh:")
+          print(f"  Valid: {creds.valid}")
+          print(f"  Expired: {creds.expired}")
+          print(f"  Refresh token present: {bool(creds.refresh_token)}")
+
+          if not creds.refresh_token:
+              print("\n❌ No refresh token available")
+              sys.exit(1)
+
+          if creds.expired:
+              print("\n🔄 Access token is expired.")
+              print("   Attempting refresh with Google...")
+
+              try:
+                  creds.refresh(Request())
+              except Exception as e:
+                  print("\n❌ GOOGLE TOKEN REFRESH FAILED")
+                  print(f"   Error type: {type(e).__name__}")
+                  print(f"   Error: {e}")
+                  sys.exit(1)
+
+              print("\n✅ GOOGLE TOKEN REFRESH SUCCESSFUL")
+
+          else:
+              print("\n✅ Access token is not expired")
+
+          print(f"\nAfter refresh:")
+          print(f"  Valid: {creds.valid}")
+          print(f"  Expired: {creds.expired}")
+          print(f"  Refresh token present: {bool(creds.refresh_token)}")
+
+          if not creds.valid:
+              print("\n❌ Credentials are still invalid")
+              sys.exit(1)
+
+          print("\n✅ OAuth authentication test passed")
+          PY
+
+      # =========================
+      # 8. Test YouTube API
+      # =========================
+      - name: Test YouTube API
+        run: |
+          python - <<'PY'
+          import pickle
+          import sys
+
+          from googleapiclient.discovery import build
+
+          print("=" * 60)
+          print("YOUTUBE API TEST")
+          print("=" * 60)
+
+          with open("youtube_token.pickle", "rb") as f:
+              creds = pickle.load(f)
+
+          try:
+              youtube = build(
+                  "youtube",
+                  "v3",
+                  credentials=creds,
+                  cache_discovery=False,
+              )
+
+              response = youtube.channels().list(
+                  part="snippet,contentDetails",
+                  mine=True,
+              ).execute()
+
+          except Exception as e:
+              print("\n❌ YOUTUBE API REQUEST FAILED")
+              print(f"   Error type: {type(e).__name__}")
+              print(f"   Error: {e}")
+              sys.exit(1)
+
+          items = response.get("items", [])
+
+          if not items:
+              print("\n❌ Authentication succeeded, but no YouTube channel was returned")
+              sys.exit(1)
+
+          print("\n✅ YOUTUBE API AUTHENTICATION SUCCESSFUL")
+
+          for channel in items:
+              snippet = channel.get("snippet", {})
+              print(f"   Channel: {snippet.get('title', 'Unknown')}")
+
+          print("\n" + "=" * 60)
+          print("🎉 ALL YOUTUBE AUTHENTICATION TESTS PASSED")
+          print("=" * 60)
+          PY
+```
